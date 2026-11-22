@@ -1,0 +1,205 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidCategory(cat) {
+      return cat in ['상의', '원피스', '바지', '치마', '아우터', '스포츠웨어', '신발', '가방', '액세서리'];
+    }
+
+    function isValidWeather(w) {
+      return w in ['sunny', 'partly_cloudy', 'cloudy', 'rainy', 'snowy'];
+    }
+
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidItem(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'brand', 'category', 'subCategory',
+          'seasons', 'colorName', 'colorHex', 'price', 'purchaseDate',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'brand', 'category', 'subCategory',
+          'seasons', 'tpo', 'colorName', 'colorHex', 'price', 'purchaseDate',
+          'material', 'pattern', 'size', 'rating', 'imageKey', 'imageUrl',
+          'additionalImages', 'memo', 'isBasicCloset', 'wearCountOffset', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.brand is string && data.brand.size() >= 1 && data.brand.size() <= 80
+        && isValidCategory(data.category)
+        && data.subCategory is string && data.subCategory.size() >= 1 && data.subCategory.size() <= 40
+        && data.seasons is list && data.seasons.size() >= 1 && data.seasons.size() <= 4
+        && data.seasons[0] is string && data.seasons[0].size() <= 10
+        && (!('tpo' in data) || (data.tpo is string && data.tpo.size() <= 40))
+        && data.colorName is string && data.colorName.size() >= 1 && data.colorName.size() <= 30
+        && data.colorHex is string && data.colorHex.size() == 7 && data.colorHex.matches('^#[0-9A-Fa-f]{6}$')
+        && data.price is number && data.price >= 0 && data.price <= 100000000
+        && data.purchaseDate is string && data.purchaseDate.size() == 10 && data.purchaseDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && (!('material' in data) || (data.material is string && data.material.size() <= 60))
+        && (!('pattern' in data) || (data.pattern is string && data.pattern.size() <= 40))
+        && (!('size' in data) || (data.size is string && data.size.size() <= 20))
+        && (!('rating' in data) || (data.rating is number && data.rating >= 0 && data.rating <= 5))
+        && (!('imageKey' in data) || (data.imageKey is string && data.imageKey.size() <= 60))
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 250000))
+        && (!('additionalImages' in data) || (
+          data.additionalImages is list && data.additionalImages.size() <= 6 &&
+          (data.additionalImages.size() == 0 || (data.additionalImages[0] is string && data.additionalImages[0].size() <= 250000))
+        ))
+        && (!('memo' in data) || (data.memo is string && data.memo.size() <= 1000))
+        && (!('isBasicCloset' in data) || data.isBasicCloset is bool)
+        && (!('wearCountOffset' in data) || (data.wearCountOffset is number && data.wearCountOffset >= -5000 && data.wearCountOffset <= 10000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDailyLook(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'date', 'weatherCondition', 'tempHigh', 'tempLow',
+          'itemIds', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'date', 'title', 'weatherCondition', 'tempHigh', 'tempLow',
+          'itemIds', 'note', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.date is string && data.date.size() == 10 && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && (!('title' in data) || (data.title is string && data.title.size() <= 80))
+        && isValidWeather(data.weatherCondition)
+        && data.tempHigh is number && data.tempHigh >= -60 && data.tempHigh <= 60
+        && data.tempLow is number && data.tempLow >= -60 && data.tempLow <= 60
+        && data.itemIds is list && data.itemIds.size() >= 1 && data.itemIds.size() <= 15
+        && data.itemIds[0] is string && isValidId(data.itemIds[0])
+        && (!('note' in data) || (data.note is string && data.note.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUser(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUser(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']);
+      allow delete: if false;
+
+      match /items/{itemId} {
+        allow get: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(itemId)
+          && request.auth.uid == userId;
+        allow list: if isSignedIn()
+          && resource.data.ownerId == request.auth.uid
+          && request.auth.uid == userId;
+        allow create: if isVerified()
+          && isValidId(userId)
+          && isValidId(itemId)
+          && request.auth.uid == userId
+          && isValidItem(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isVerified()
+          && isValidId(userId)
+          && isValidId(itemId)
+          && request.auth.uid == userId
+          && isValidItem(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'brand', 'category', 'subCategory', 'seasons', 'tpo',
+            'colorName', 'colorHex', 'price', 'purchaseDate', 'material',
+            'pattern', 'size', 'rating', 'imageKey', 'imageUrl',
+            'additionalImages', 'memo', 'isBasicCloset', 'wearCountOffset', 'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isVerified()
+          && isValidId(userId)
+          && isValidId(itemId)
+          && request.auth.uid == userId
+          && existing().ownerId == request.auth.uid;
+      }
+
+      match /dailyLooks/{lookId} {
+        allow get: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(lookId)
+          && request.auth.uid == userId;
+        allow list: if isSignedIn()
+          && resource.data.ownerId == request.auth.uid
+          && request.auth.uid == userId;
+        allow create: if isVerified()
+          && isValidId(userId)
+          && isValidId(lookId)
+          && request.auth.uid == userId
+          && isValidDailyLook(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow update: if isVerified()
+          && isValidId(userId)
+          && isValidId(lookId)
+          && request.auth.uid == userId
+          && isValidDailyLook(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'date', 'title', 'weatherCondition', 'tempHigh', 'tempLow',
+            'itemIds', 'note', 'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/users/$(userId));
+        allow delete: if isVerified()
+          && isValidId(userId)
+          && isValidId(lookId)
+          && request.auth.uid == userId
+          && existing().ownerId == request.auth.uid;
+      }
+    }
+  }
+}

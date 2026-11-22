@@ -1,0 +1,6 @@
+{
+  "name": "Closet Note — 나만의 옷장 & 데일리룩",
+  "description": "내 옷장 아이템 관리, 데일리룩 캘린더 기록, 카테고리 및 월별 지출 통계를 한눈에 확인하는 개인 옷장 관리 앱",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
